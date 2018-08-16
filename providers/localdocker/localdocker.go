@@ -22,6 +22,12 @@ import (
 	dockerclient "github.com/docker/docker/client"
 )
 
+//
+// This is a simple sample provider implementation
+// It isn't anticipated that it solves any particularly valuable scenario
+// It is a long way from ready - no namespace or network handling as two obvious examples ;-)
+//
+
 // Provider implements the virtual-kubelet provider and executes against the local docker context
 type Provider struct {
 	resourceManager    *manager.ResourceManager
@@ -29,7 +35,11 @@ type Provider struct {
 	internalIP         string
 	daemonEndpointPort int32
 	dockerClient       *dockerclient.Client
-	pods               []*v1.Pod
+	pods               []*podInfo
+}
+type podInfo struct {
+	pod         *v1.Pod
+	containerID string
 }
 
 // NewLocalDockerProvider creates a new Provider instance
@@ -41,7 +51,7 @@ func NewLocalDockerProvider(resourcemanager *manager.ResourceManager, nodeName s
 	if err != nil {
 		return nil, err
 	}
-	pods := make([]*v1.Pod, 0)
+	pods := make([]*podInfo, 0)
 	provider := Provider{
 		resourceManager:    resourcemanager,
 		nodeName:           nodeName,
@@ -52,7 +62,7 @@ func NewLocalDockerProvider(resourcemanager *manager.ResourceManager, nodeName s
 	}
 	return &provider, nil
 }
-func createDockerContainerName(podName string, containerName string) string {
+func createDockerContainerName(podName string, containerName string) string { // TODO - add namespace!
 	return fmt.Sprintf("VK_%s_%s", podName, containerName)
 }
 
@@ -126,7 +136,11 @@ func (p *Provider) CreatePod(pod *v1.Pod) error {
 		},
 	})
 
-	p.pods = append(p.pods, pod)
+	podInfo := podInfo{
+		pod:         pod,
+		containerID: container.ID,
+	}
+	p.pods = append(p.pods, &podInfo)
 	return nil
 }
 
@@ -137,15 +151,29 @@ func (p *Provider) UpdatePod(pod *v1.Pod) error {
 
 // DeletePod takes a Kubernetes Pod and deletes it from the provider.
 func (p *Provider) DeletePod(pod *v1.Pod) error {
-	return fmt.Errorf("not implemented: DeletePod")
+	// Currently only handling a single container, for simplicity
+	if len(pod.Spec.Containers) != 1 {
+		return fmt.Errorf("DeletePod currently only supports a single container per pod")
+	}
+
+	for _, podInfo := range p.pods {
+		if podInfo.pod.Namespace == pod.Namespace && podInfo.pod.Name == pod.Name {
+			err := p.dockerClient.ContainerRemove(context.Background(), podInfo.containerID, dockertypes.ContainerRemoveOptions{Force: true})
+			if err != nil {
+				return err
+			}
+			// TODO - do we need to update the pod status here?
+		}
+	}
+	return fmt.Errorf("DeletePod: pod not found: %s:%s", pod.Namespace, pod.Name)
 }
 
 // GetPod retrieves a pod by name from the provider (can be cached).
 func (p *Provider) GetPod(namespace, name string) (*v1.Pod, error) {
 	log.Printf("GetPod called for %s:%s\n", namespace, name)
-	for _, pod := range p.pods {
-		if pod.Namespace == namespace && pod.Name == name {
-			return pod, nil
+	for _, podInfo := range p.pods {
+		if podInfo.pod.Namespace == namespace && podInfo.pod.Name == name {
+			return podInfo.pod, nil
 		}
 	}
 	return nil, fmt.Errorf("GetPod: pod not found %s:%s", namespace, name)
@@ -154,20 +182,23 @@ func (p *Provider) GetPod(namespace, name string) (*v1.Pod, error) {
 // GetPodStatus retrievesthe status of a pod by name from the provider.
 func (p *Provider) GetPodStatus(namespace, name string) (*v1.PodStatus, error) {
 	log.Printf("GetPodStatus called for %s:%s\n", namespace, name)
-	for _, pod := range p.pods {
-		if pod.Namespace == namespace && pod.Name == name {
+	for _, podInfo := range p.pods {
+		if podInfo.pod.Namespace == namespace && podInfo.pod.Name == name {
 			// TODO - check that the container is running!
-			return &pod.Status, nil
+			return &podInfo.pod.Status, nil
 		}
 	}
 	return nil, fmt.Errorf("GetPodStatus: pod not found %s:%s", namespace, name)
-
 }
 
 // GetPods retrieves a list of all pods running on the provider (can be cached).
 func (p *Provider) GetPods() ([]*v1.Pod, error) {
 	log.Printf("GetPods called\n")
-	return p.pods, nil
+	pods := make([]*v1.Pod, len(p.pods))
+	for index, pod := range p.pods {
+		pods[index] = pod.pod
+	}
+	return pods, nil
 }
 
 // Capacity returns a resource list with the capacity constraints of the provider.
