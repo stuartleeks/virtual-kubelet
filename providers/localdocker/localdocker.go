@@ -1,6 +1,7 @@
 package localdocker
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"time"
@@ -14,6 +15,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/remotecommand"
 
+	dockertypes "github.com/docker/docker/api/types"
+	dockercontainer "github.com/docker/docker/api/types/container"
+	dockernetwork "github.com/docker/docker/api/types/network"
 	dockerclient "github.com/docker/docker/client"
 )
 
@@ -48,13 +52,28 @@ func NewLocalDockerProvider(resourcemanager *manager.ResourceManager, nodeName s
 // CreatePod takes a Kubernetes Pod and deploys it within the provider.
 func (p *Provider) CreatePod(pod *v1.Pod) error {
 
-	return fmt.Errorf("not implemented: CreatePod")
-	// // Currently only handling a single container
-	// if len(pod.Spec.Containers) != 1 {
+	// Currently only handling a single container, for simplicity
+	if len(pod.Spec.Containers) != 1 {
+		return fmt.Errorf("CreatePod currently only supports a single container per pod")
+	}
+	containerSpec := pod.Spec.Containers[0]
 
-	// }
-	// container := pod.Spec.Containers
-	// return nil
+	config := dockercontainer.Config{
+		Image: containerSpec.Image,
+	}
+
+	containerName := fmt.Sprintf("VK_%s_%s", pod.Name, containerSpec.Name)
+	container, err := p.dockerClient.ContainerCreate(context.Background(), &config, &dockercontainer.HostConfig{}, &dockernetwork.NetworkingConfig{}, containerName)
+	if err != nil {
+		return err
+	}
+
+	err = p.dockerClient.ContainerStart(context.Background(), container.ID, dockertypes.ContainerStartOptions{})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // UpdatePod takes a Kubernetes Pod and updates it within the provider.
