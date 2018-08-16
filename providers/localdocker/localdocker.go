@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"time"
 
 	"github.com/virtual-kubelet/virtual-kubelet/providers"
@@ -28,6 +29,7 @@ type Provider struct {
 	internalIP         string
 	daemonEndpointPort int32
 	dockerClient       *dockerclient.Client
+	pods               []*v1.Pod
 }
 
 // NewLocalDockerProvider creates a new Provider instance
@@ -39,14 +41,19 @@ func NewLocalDockerProvider(resourcemanager *manager.ResourceManager, nodeName s
 	if err != nil {
 		return nil, err
 	}
+	pods := make([]*v1.Pod, 0)
 	provider := Provider{
 		resourceManager:    resourcemanager,
 		nodeName:           nodeName,
 		internalIP:         internalIP,
 		daemonEndpointPort: daemonEndpointPort,
 		dockerClient:       dockerClient,
+		pods:               pods,
 	}
 	return &provider, nil
+}
+func createDockerContainerName(podName string, containerName string) string {
+	return fmt.Sprintf("VK_%s_%s", podName, containerName)
 }
 
 // CreatePod takes a Kubernetes Pod and deploys it within the provider.
@@ -62,17 +69,64 @@ func (p *Provider) CreatePod(pod *v1.Pod) error {
 		Image: containerSpec.Image,
 	}
 
-	containerName := fmt.Sprintf("VK_%s_%s", pod.Name, containerSpec.Name)
+	containerName := createDockerContainerName(pod.Name, containerSpec.Name)
+
+	// TODO add in ImagePull
+
+	pod.Status.Phase = v1.PodPending
+	pod.Status.Message = "Creating"
+	log.Printf("Creating container %s\n", containerName)
+	// TODO handle exposing ports
 	container, err := p.dockerClient.ContainerCreate(context.Background(), &config, &dockercontainer.HostConfig{}, &dockernetwork.NetworkingConfig{}, containerName)
 	if err != nil {
 		return err
 	}
+	log.Printf("Created container %s. ID: %s\n", containerName, container.ID)
 
+	pod.Status.Message = "Starting"
+	log.Printf("Starting container %s\n", container.ID)
 	err = p.dockerClient.ContainerStart(context.Background(), container.ID, dockertypes.ContainerStartOptions{})
 	if err != nil {
 		return err
 	}
+	// TODO does ContainerStart wait for container to start before returning?
+	log.Printf("Started container %s\n", container.ID)
 
+	pod.Status.Phase = v1.PodRunning
+	pod.Status.Message = "Running"
+
+	now := metav1.NewTime(time.Now())
+	pod.Status.StartTime = &now
+	// pod.Status.HostIP = "1.2.3.4" // TODO
+	// pod.Status.PodIP = "5.6.7.8"  // TODO
+	pod.Status.Conditions = []v1.PodCondition{
+		{
+			Type:   v1.PodInitialized,
+			Status: v1.ConditionTrue,
+		},
+		{
+			Type:   v1.PodReady,
+			Status: v1.ConditionTrue,
+		},
+		{
+			Type:   v1.PodScheduled,
+			Status: v1.ConditionTrue,
+		},
+	}
+
+	pod.Status.ContainerStatuses = append(pod.Status.ContainerStatuses, v1.ContainerStatus{
+		Name:         containerSpec.Name,
+		Image:        containerSpec.Image,
+		Ready:        true,
+		RestartCount: 0,
+		State: v1.ContainerState{
+			Running: &v1.ContainerStateRunning{
+				StartedAt: now,
+			},
+		},
+	})
+
+	p.pods = append(p.pods, pod)
 	return nil
 }
 
@@ -88,19 +142,32 @@ func (p *Provider) DeletePod(pod *v1.Pod) error {
 
 // GetPod retrieves a pod by name from the provider (can be cached).
 func (p *Provider) GetPod(namespace, name string) (*v1.Pod, error) {
-	return nil, fmt.Errorf("not implemented: GetPod")
+	log.Printf("GetPod called for %s:%s\n", namespace, name)
+	for _, pod := range p.pods {
+		if pod.Namespace == namespace && pod.Name == name {
+			return pod, nil
+		}
+	}
+	return nil, fmt.Errorf("GetPod: pod not found %s:%s", namespace, name)
 }
 
 // GetPodStatus retrievesthe status of a pod by name from the provider.
 func (p *Provider) GetPodStatus(namespace, name string) (*v1.PodStatus, error) {
-	return nil, fmt.Errorf("not implemented: GetPodStatus")
+	log.Printf("GetPodStatus called for %s:%s\n", namespace, name)
+	for _, pod := range p.pods {
+		if pod.Namespace == namespace && pod.Name == name {
+			// TODO - check that the container is running!
+			return &pod.Status, nil
+		}
+	}
+	return nil, fmt.Errorf("GetPodStatus: pod not found %s:%s", namespace, name)
+
 }
 
 // GetPods retrieves a list of all pods running on the provider (can be cached).
 func (p *Provider) GetPods() ([]*v1.Pod, error) {
-	fmt.Printf("TODO: GetPods - stubbed to return empty array\n")
-	var pods []*v1.Pod
-	return pods, nil
+	log.Printf("GetPods called\n")
+	return p.pods, nil
 }
 
 // Capacity returns a resource list with the capacity constraints of the provider.
