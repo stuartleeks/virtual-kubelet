@@ -196,7 +196,7 @@
   version = "v2.6.2"
 
 [[projects]]
-  digest = "1:9bbbe90fa9b5ebe3ee2e4d369c471dd60e54542a9fc4877d09e1b0876cbb986d"
+  digest = "1:485e659aab01d403fea76c2453df622907ef1b3b5d383be546a6f8bd22066453"
   name = "github.com/docker/docker"
   packages = [
     "api/errors",
@@ -204,13 +204,18 @@
     "api/types/backend",
     "api/types/blkiodev",
     "api/types/container",
+    "api/types/events",
     "api/types/filters",
     "api/types/mount",
     "api/types/network",
+    "api/types/reference",
     "api/types/registry",
     "api/types/strslice",
     "api/types/swarm",
+    "api/types/time",
     "api/types/versions",
+    "api/types/volume",
+    "client",
     "daemon/graphdriver",
     "image",
     "image/v1",
@@ -239,6 +244,7 @@
     "pkg/system",
     "pkg/term",
     "pkg/term/windows",
+    "pkg/tlsconfig",
     "pkg/truncindex",
     "plugin/v2",
     "reference",
@@ -1359,7 +1365,10 @@
     "github.com/aws/aws-sdk-go/service/iam",
     "github.com/cenkalti/backoff",
     "github.com/dimchansky/utfbom",
+    "github.com/docker/docker/api/types/container",
+    "github.com/docker/docker/api/types/network",
     "github.com/docker/docker/api/types/strslice",
+    "github.com/docker/docker/client",
     "github.com/docker/go-connections/nat",
     "github.com/docker/go-connections/sockets",
     "github.com/docker/go-connections/tlsconfig",
