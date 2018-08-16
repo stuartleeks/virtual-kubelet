@@ -40,7 +40,7 @@ func NewLocalDockerProvider(resourcemanager *manager.ResourceManager, nodeName s
 // CreatePod takes a Kubernetes Pod and deploys it within the provider.
 func (p *LocalDockerProvider) CreatePod(pod *v1.Pod) error {
 
-	return fmt.Errorf("not implemented")
+	return fmt.Errorf("not implemented: CreatePod")
 	// // Currently only handling a single container
 	// if len(pod.Spec.Containers) != 1 {
 
@@ -51,27 +51,29 @@ func (p *LocalDockerProvider) CreatePod(pod *v1.Pod) error {
 
 // UpdatePod takes a Kubernetes Pod and updates it within the provider.
 func (p *LocalDockerProvider) UpdatePod(pod *v1.Pod) error {
-	return fmt.Errorf("not implemented")
+	return fmt.Errorf("not implemented: UpdatePod")
 }
 
 // DeletePod takes a Kubernetes Pod and deletes it from the provider.
 func (p *LocalDockerProvider) DeletePod(pod *v1.Pod) error {
-	return fmt.Errorf("not implemented")
+	return fmt.Errorf("not implemented: DeletePod")
 }
 
 // GetPod retrieves a pod by name from the provider (can be cached).
 func (p *LocalDockerProvider) GetPod(namespace, name string) (*v1.Pod, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, fmt.Errorf("not implemented: GetPod")
 }
 
 // GetPodStatus retrievesthe status of a pod by name from the provider.
 func (p *LocalDockerProvider) GetPodStatus(namespace, name string) (*v1.PodStatus, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, fmt.Errorf("not implemented: GetPodStatus")
 }
 
 // GetPods retrieves a list of all pods running on the provider (can be cached).
 func (p *LocalDockerProvider) GetPods() ([]*v1.Pod, error) {
-	return nil, fmt.Errorf("not implemented")
+	fmt.Printf("TODO: GetPods - stubbed to return empty array\n")
+	var pods []*v1.Pod
+	return pods, nil
 }
 
 // Capacity returns a resource list with the capacity constraints of the provider.
@@ -139,12 +141,12 @@ func (p *LocalDockerProvider) OperatingSystem() string {
 // ExecInContainer executes a command in a container in the pod, copying data
 // between in/out/err and the container's stdin/stdout/stderr.
 func (p *LocalDockerProvider) ExecInContainer(name string, uid types.UID, container string, cmd []string, in io.Reader, out, err io.WriteCloser, tty bool, resize <-chan remotecommand.TerminalSize, timeout time.Duration) error {
-	return fmt.Errorf("not implemented")
+	return fmt.Errorf("not implemented: ExecInContainer")
 }
 
 // GetContainerLogs retrieves the logs of a container by name from the provider.
 func (p *LocalDockerProvider) GetContainerLogs(namespace, podName, containerName string, tail int) (string, error) {
-	return "", fmt.Errorf("not implemented")
+	return "", fmt.Errorf("not implemented: GetContainerLogs")
 }
 
 // NodeAddresses returns a list of addresses for the node status
