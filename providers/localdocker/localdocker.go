@@ -13,6 +13,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/remotecommand"
+
+	dockerclient "github.com/docker/docker/client"
 )
 
 // LocalDockerProvider implements the virtual-kubelet provider and executes against the local docker context
@@ -21,6 +23,7 @@ type LocalDockerProvider struct {
 	nodeName           string
 	internalIP         string
 	daemonEndpointPort int32
+	dockerClient       *dockerclient.Client
 }
 
 // NewLocalDockerProvider creates a new LocalDockerProvider instance
@@ -28,11 +31,16 @@ func NewLocalDockerProvider(resourcemanager *manager.ResourceManager, nodeName s
 	if nodeName == "" {
 		return nil, fmt.Errorf("nodeName is required")
 	}
+	dockerClient, err := dockerclient.NewEnvClient()
+	if err != nil {
+		return nil, err
+	}
 	provider := LocalDockerProvider{
 		resourceManager:    resourcemanager,
 		nodeName:           nodeName,
 		internalIP:         internalIP,
 		daemonEndpointPort: daemonEndpointPort,
+		dockerClient:       dockerClient,
 	}
 	return &provider, nil
 }
