@@ -9,6 +9,7 @@ import (
 	"github.com/virtual-kubelet/virtual-kubelet/providers/azurebatch"
 	"github.com/virtual-kubelet/virtual-kubelet/providers/huawei"
 	"github.com/virtual-kubelet/virtual-kubelet/providers/hypersh"
+	"github.com/virtual-kubelet/virtual-kubelet/providers/localdocker"
 	"github.com/virtual-kubelet/virtual-kubelet/providers/mock"
 	"github.com/virtual-kubelet/virtual-kubelet/providers/sfmesh"
 	"github.com/virtual-kubelet/virtual-kubelet/providers/web"
@@ -42,6 +43,8 @@ func lookupProvider(provider, providerConfig string, rm *manager.ResourceManager
 		return huawei.NewCCIProvider(providerConfig, rm, nodeName, operatingSystem, internalIP, daemonEndpointPort)
 	case "sfmesh":
 		return sfmesh.NewSFMeshProvider(rm, nodeName, operatingSystem, internalIP, daemonEndpointPort)
+	case "localdocker":
+		return localdocker.NewLocalDockerProvider(rm, nodeName, internalIP, daemonEndpointPort)
 	default:
 		fmt.Printf("Provider '%s' is not supported\n", provider)
 	}
