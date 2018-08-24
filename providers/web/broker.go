@@ -54,6 +54,8 @@ func NewBrokerProvider(nodeName, operatingSystem string, daemonEndpointPort int3
 	if ep := os.Getenv("WEB_ENDPOINT_URL"); ep != "" {
 		epurl, err := url.Parse(ep)
 		if err != nil {
+			log.Printf("NewBrokerProvider error: %s", err)
+
 			return nil, err
 		}
 		provider.endpoint = epurl
@@ -64,33 +66,51 @@ func NewBrokerProvider(nodeName, operatingSystem string, daemonEndpointPort int3
 
 // CreatePod accepts a Pod definition and forwards the call to the web endpoint
 func (p *BrokerProvider) CreatePod(pod *v1.Pod) error {
-	return p.createUpdatePod(pod, "POST", "/createPod")
+	log.Printf("CreatePod: %s\n", pod.Name)
+	err := p.createUpdatePod(pod, "POST", "/createPod")
+	if err != nil {
+		log.Printf("CreatePod error: %s", err)
+	}
+	return err
 }
 
 // UpdatePod accepts a Pod definition and forwards the call to the web endpoint
 func (p *BrokerProvider) UpdatePod(pod *v1.Pod) error {
-	return p.createUpdatePod(pod, "PUT", "/updatePod")
+	log.Printf("UpdatePod: %s\n", pod.Name)
+	err := p.createUpdatePod(pod, "PUT", "/updatePod")
+	if err != nil {
+		log.Printf("UpdatePod error: %s", err)
+	}
+	return err
+
 }
 
 // DeletePod accepts a Pod definition and forwards the call to the web endpoint
 func (p *BrokerProvider) DeletePod(pod *v1.Pod) error {
+	log.Printf("DeletePod: %s\n", pod.Name)
 	urlPath, err := url.Parse("/deletePod")
 	if err != nil {
+		log.Printf("DeletePod error (url parse): %s", err)
 		return err
 	}
 
 	// encode pod definition as JSON and post request
 	podJSON, err := json.Marshal(pod)
 	if err != nil {
+		log.Printf("DeletePod error (json marshal): %s", err)
 		return err
 	}
 
 	_, err = p.doRequest("DELETE", urlPath, podJSON, false)
+	if err != nil {
+		log.Printf("DeletePod error (do request): %s", err)
+	}
 	return err
 }
 
 // GetPod returns a pod by name that is being managed by the web server
 func (p *BrokerProvider) GetPod(namespace, name string) (*v1.Pod, error) {
+	log.Printf("GetPod: %s\n", name)
 	urlPathStr := fmt.Sprintf(
 		"/getPod?namespace=%s&name=%s",
 		url.QueryEscape(namespace),
@@ -101,8 +121,11 @@ func (p *BrokerProvider) GetPod(namespace, name string) (*v1.Pod, error) {
 
 	// if we get a "404 Not Found" then we return nil to indicate that no pod
 	// with this name was found
-	if err != nil && err.Error() == "404 Not Found" {
-		return nil, nil
+	if err != nil {
+		if err.Error() == "404 Not Found" {
+			return nil, nil
+		}
+		log.Printf("GetPod error: %s", err)
 	}
 
 	return &pod, err
@@ -110,6 +133,7 @@ func (p *BrokerProvider) GetPod(namespace, name string) (*v1.Pod, error) {
 
 // GetContainerLogs returns the logs of a container running in a pod by name.
 func (p *BrokerProvider) GetContainerLogs(namespace, podName, containerName string, tail int) (string, error) {
+	log.Printf("GetContainerLogs: %s:%s\n", podName, containerName)
 	urlPathStr := fmt.Sprintf(
 		"/getContainerLogs?namespace=%s&podName=%s&containerName=%s&tail=%d",
 		url.QueryEscape(namespace),
@@ -119,6 +143,7 @@ func (p *BrokerProvider) GetContainerLogs(namespace, podName, containerName stri
 
 	response, err := p.doGetRequestBytes(urlPathStr)
 	if err != nil {
+		log.Printf("GetContainerLogs error: %s", err)
 		return "", err
 	}
 
@@ -141,6 +166,7 @@ func (p *BrokerProvider) ExecInContainer(name string, uid types.UID, container s
 
 // GetPodStatus retrieves the status of a given pod by name.
 func (p *BrokerProvider) GetPodStatus(namespace, name string) (*v1.PodStatus, error) {
+	log.Printf("GetPodStatus: %s\n", name)
 	urlPathStr := fmt.Sprintf(
 		"/getPodStatus?namespace=%s&name=%s",
 		url.QueryEscape(namespace),
@@ -151,8 +177,12 @@ func (p *BrokerProvider) GetPodStatus(namespace, name string) (*v1.PodStatus, er
 
 	// if we get a "404 Not Found" then we return nil to indicate that no pod
 	// with this name was found
-	if err != nil && err.Error() == "404 Not Found" {
-		return nil, nil
+	if err != nil {
+		if err.Error() == "404 Not Found" {
+			log.Printf("***POD NOT FOUND")
+			return nil, nil
+		}
+		log.Printf("GetPodStatus error: %s", err)
 	}
 
 	return &podStatus, err
@@ -160,20 +190,25 @@ func (p *BrokerProvider) GetPodStatus(namespace, name string) (*v1.PodStatus, er
 
 // GetPods retrieves a list of all pods scheduled to run.
 func (p *BrokerProvider) GetPods() ([]*v1.Pod, error) {
+	log.Printf("GetPods\n")
 	var pods []*v1.Pod
 	err := p.doGetRequest("/getPods", &pods)
 
+	if err != nil {
+		log.Printf("GetPods error: %s", err)
+	}
 	return pods, err
 }
 
 // Capacity returns a resource list containing the capacity limits
 func (p *BrokerProvider) Capacity() v1.ResourceList {
+	log.Printf("Capacity\n")
 	var resourceList v1.ResourceList
 	err := p.doGetRequest("/capacity", &resourceList)
 
 	// TODO: This API should support reporting an error.
 	if err != nil {
-		panic(err)
+		log.Panicf("Capacity failed: %s", err)
 	}
 
 	return resourceList
@@ -181,12 +216,13 @@ func (p *BrokerProvider) Capacity() v1.ResourceList {
 
 // NodeConditions returns a list of conditions (Ready, OutOfDisk, etc), for updates to the node status
 func (p *BrokerProvider) NodeConditions() []v1.NodeCondition {
+	log.Printf("NodeConditions\n")
 	var nodeConditions []v1.NodeCondition
 	err := p.doGetRequest("/nodeConditions", &nodeConditions)
 
 	// TODO: This API should support reporting an error.
 	if err != nil {
-		panic(err)
+		log.Panicf("NodeConditions failed: %s", err)
 	}
 
 	return nodeConditions
@@ -195,12 +231,13 @@ func (p *BrokerProvider) NodeConditions() []v1.NodeCondition {
 // NodeAddresses returns a list of addresses for the node status
 // within Kubernetes.
 func (p *BrokerProvider) NodeAddresses() []v1.NodeAddress {
+	log.Printf("NodeAddresses\n")
 	var nodeAddresses []v1.NodeAddress
 	err := p.doGetRequest("/nodeAddresses", &nodeAddresses)
 
 	// TODO: This API should support reporting an error.
 	if err != nil {
-		panic(err)
+		log.Panicf("NodeAddresses failed: %s", err)
 	}
 
 	return nodeAddresses
