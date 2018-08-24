@@ -1,6 +1,7 @@
 package localdocker
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -49,7 +50,7 @@ func NewLocalDockerProvider(resourcemanager *manager.ResourceManager, nodeName s
 	}
 	dockerClient, err := dockerclient.NewEnvClient()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Failed to create docker client: %v", err)
 	}
 	pods := make([]*podInfo, 0)
 	provider := Provider{
@@ -89,7 +90,7 @@ func (p *Provider) CreatePod(pod *v1.Pod) error {
 	// TODO handle exposing ports
 	container, err := p.dockerClient.ContainerCreate(context.Background(), &config, &dockercontainer.HostConfig{}, &dockernetwork.NetworkingConfig{}, containerName)
 	if err != nil {
-		return err
+		return fmt.Errorf("ContainerCreate failed: %v", err)
 	}
 	log.Printf("Created container %s. ID: %s\n", containerName, container.ID)
 
@@ -97,7 +98,7 @@ func (p *Provider) CreatePod(pod *v1.Pod) error {
 	log.Printf("Starting container %s\n", container.ID)
 	err = p.dockerClient.ContainerStart(context.Background(), container.ID, dockertypes.ContainerStartOptions{})
 	if err != nil {
-		return err
+		return fmt.Errorf("ContainerStart failed: %v", err)
 	}
 	// TODO does ContainerStart wait for container to start before returning?
 	log.Printf("Started container %s\n", container.ID)
@@ -107,6 +108,15 @@ func (p *Provider) CreatePod(pod *v1.Pod) error {
 
 	now := metav1.NewTime(time.Now())
 	pod.Status.StartTime = &now
+
+	// containerInfo, err := p.dockerClient.ContainerInspect(context.Background(), container.ID)
+	// if err != nil {
+
+	// 	return err
+	// }
+	// pod.Status.HostIP = "192.168.1.181"
+	// pod.Status.PodIP = containerInfo.NetworkSettings.IPAddress
+
 	// pod.Status.HostIP = "1.2.3.4" // TODO
 	// pod.Status.PodIP = "5.6.7.8"  // TODO
 	pod.Status.Conditions = []v1.PodCondition{
@@ -160,7 +170,7 @@ func (p *Provider) DeletePod(pod *v1.Pod) error {
 		if podInfo.pod.Namespace == pod.Namespace && podInfo.pod.Name == pod.Name {
 			err := p.dockerClient.ContainerRemove(context.Background(), podInfo.containerID, dockertypes.ContainerRemoveOptions{Force: true})
 			if err != nil {
-				return err
+				return fmt.Errorf("ContainerRemove failed: %v", err)
 			}
 			// TODO - do we need to update the pod status here?
 		}
@@ -271,7 +281,27 @@ func (p *Provider) ExecInContainer(name string, uid types.UID, container string,
 
 // GetContainerLogs retrieves the logs of a container by name from the provider.
 func (p *Provider) GetContainerLogs(namespace, podName, containerName string, tail int) (string, error) {
-	return "", fmt.Errorf("not implemented: GetContainerLogs")
+	log.Printf("GetContainerLogs called for %s:%s:%s\n", namespace, podName, containerName)
+
+	for _, podInfo := range p.pods {
+		if podInfo.pod.Namespace == namespace && podInfo.pod.Name == podName {
+			tailString := fmt.Sprintf("%d", tail)
+			readerCloser, err := p.dockerClient.ContainerLogs(context.Background(), podInfo.containerID, dockertypes.ContainerLogsOptions{Tail: tailString})
+
+			if err != nil {
+				return "", fmt.Errorf("ContainerLogs failed: %v", err)
+			}
+
+			buf := new(bytes.Buffer)
+			buf.ReadFrom(readerCloser)
+			s := buf.String()
+
+			readerCloser.Close()
+
+			return s, nil
+		}
+	}
+	return "", fmt.Errorf("Not found: %s:%s:%s", namespace, podName, containerName)
 }
 
 // NodeAddresses returns a list of addresses for the node status
